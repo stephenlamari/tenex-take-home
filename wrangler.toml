@@ -17,6 +17,13 @@ binding = "AI"
 
 # Development overrides
 [env.development]
+[[env.development.r2_buckets]]
+binding = "LOG_STORAGE"
+bucket_name = "soc-log-files"
+
+[env.development.ai]
+binding = "AI"
+
 [env.development.vars]
 AUTH_USERNAME = "admin"
 AUTH_PASSWORD = "devpassword"

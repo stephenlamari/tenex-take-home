@@ -6,21 +6,41 @@ import { processLogFile, getJobResults } from './processor'
 
 const app = new Hono<{ Bindings: Env }>()
 
-app.use(cors())
+// Simple in-memory store for development
+const jobStore = new Map<string, any>()
+
+app.use('*', cors({
+  origin: (origin) => {
+    console.log('CORS request from:', origin)
+    return origin || '*'
+  },
+  credentials: true,
+  allowHeaders: ['Content-Type', 'Authorization'],
+  allowMethods: ['GET', 'POST', 'OPTIONS']
+}))
 
 app.use('/api/*', async (c: Context<{ Bindings: Env }>, next) => {
+  // Skip auth for OPTIONS requests (CORS preflight)
+  if (c.req.method === 'OPTIONS') {
+    return next()
+  }
+  
   const auth = basicAuth({
-    username: c.env.AUTH_USERNAME,
-    password: c.env.AUTH_PASSWORD,
+    username: c.env.AUTH_USERNAME || 'admin',
+    password: c.env.AUTH_PASSWORD || 'devpassword',
     realm: 'SOC Log Analyzer',
     verifyUser: (username: string, password: string) => {
-      return username === c.env.AUTH_USERNAME && password === c.env.AUTH_PASSWORD
+      const expectedUser = c.env.AUTH_USERNAME || 'admin'
+      const expectedPass = c.env.AUTH_PASSWORD || 'devpassword'
+      console.log('Auth attempt:', { username, expectedUser, matches: username === expectedUser && password === expectedPass })
+      return username === expectedUser && password === expectedPass
     }
   })
   return auth(c, next)
 })
 
 app.post('/api/upload', async (c) => {
+  console.log('POST /api/upload received')
   try {
     const formData = await c.req.formData()
     const file = formData.get('file') as File | null
@@ -49,7 +69,59 @@ app.post('/api/upload', async (c) => {
 
     const analysis = await processLogFile(c.env, file, jobId, r2Key)
 
-    return c.json(analysis)
+    // Parse logs again to get statistics (since analysis doesn't return raw logs)
+    const fileClone = new File([await file.text()], file.name)
+    const { parseLogFile } = await import('./parser')
+    const logs = await parseLogFile(fileClone)
+    
+    // Calculate statistics
+    const byAction: Record<string, number> = {}
+    const byStatus: Record<string, number> = {}
+    
+    logs.forEach((log: any) => {
+      const action = log.action || 'unknown'
+      const status = log.http_status_code?.toString() || '0'
+      
+      byAction[action] = (byAction[action] || 0) + 1
+      byStatus[status] = (byStatus[status] || 0) + 1
+    })
+
+    // Transform to match frontend expected format
+    const response = {
+      jobId: analysis.jobId,
+      status: 'complete' as const,
+      analysis: {
+        anomalies: analysis.anomalies.map(anomaly => ({
+          ...anomaly,
+          raw_log: {
+            timestamp: anomaly.raw_log.datetime,
+            sourceIp: anomaly.raw_log.source_ip,
+            identityEmail: anomaly.raw_log.email,
+            deviceName: anomaly.raw_log.device_name,
+            host: anomaly.raw_log.http_host || new URL(anomaly.raw_log.url || 'http://unknown').hostname,
+            url: anomaly.raw_log.url,
+            method: anomaly.raw_log.http_method,
+            status: anomaly.raw_log.http_status_code,
+            action: anomaly.raw_log.action,
+            bytesIn: anomaly.raw_log.client_request_bytes,
+            bytesOut: anomaly.raw_log.client_response_bytes,
+            userAgent: anomaly.raw_log.user_agent,
+            policyName: anomaly.raw_log.policy_name
+          }
+        })),
+        timeline: analysis.timeline,
+        totals: {
+          rows: analysis.totalLogs,
+          byAction,
+          byStatus
+        }
+      }
+    }
+
+    // Store in memory with logs for rows endpoint
+    jobStore.set(analysis.jobId, { ...response, logs })
+
+    return c.json(response)
   } catch (error) {
     console.error('Upload error:', error)
     return c.json({ 
@@ -62,6 +134,13 @@ app.post('/api/upload', async (c) => {
 app.get('/api/jobs/:id', async (c) => {
   const jobId = c.req.param('id')
   
+  // First check in-memory store
+  const storedResult = jobStore.get(jobId)
+  if (storedResult) {
+    return c.json(storedResult)
+  }
+  
+  // Fallback to database if configured
   try {
     const results = await getJobResults(c.env, jobId)
     if (!results) {
@@ -72,6 +151,39 @@ app.get('/api/jobs/:id', async (c) => {
     console.error('Get job error:', error)
     return c.json({ error: 'Failed to retrieve job results' }, 500)
   }
+})
+
+app.get('/api/jobs/:id/rows', async (c) => {
+  const jobId = c.req.param('id')
+  const offset = parseInt(c.req.query('offset') || '0')
+  const limit = parseInt(c.req.query('limit') || '200')
+  
+  const storedResult = jobStore.get(jobId)
+  if (!storedResult || !storedResult.logs) {
+    return c.json({ rows: [], total: 0 })
+  }
+  
+  // Transform logs to frontend format
+  const rows = storedResult.logs.slice(offset, offset + limit).map((log: any) => ({
+    timestamp: log.datetime,
+    sourceIp: log.source_ip,
+    identityEmail: log.email,
+    deviceName: log.device_name,
+    host: log.http_host || new URL(log.url || 'http://unknown').hostname,
+    url: log.url,
+    method: log.http_method,
+    status: log.http_status_code,
+    action: log.action,
+    bytesIn: log.client_request_bytes,
+    bytesOut: log.client_response_bytes,
+    userAgent: log.user_agent,
+    policyName: log.policy_name
+  }))
+  
+  return c.json({ 
+    rows,
+    total: storedResult.logs.length
+  })
 })
 
 app.get('/api/health', (c) => {
