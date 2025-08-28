@@ -1,0 +1,22 @@
+{
+  "name": "soc-log-analyzer",
+  "version": "1.0.0",
+  "description": "SOC Log Analyzer with AI-powered anomaly detection",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240117.0",
+    "@types/node": "^20.11.5",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.1",
+    "wrangler": "^3.25.0"
+  },
+  "dependencies": {
+    "hono": "^3.12.8"
+  }
+}

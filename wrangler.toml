@@ -1,0 +1,27 @@
+name = "soc-log-analyzer"
+main = "src/index.ts"
+compatibility_date = "2025-08-27"
+
+[[r2_buckets]]
+binding = "LOG_STORAGE"
+bucket_name = "soc-log-files"
+
+[ai]
+binding = "AI"
+
+# Optional D1 database for storing results
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "soc-analyzer-db"
+# database_id = "your-database-id"
+
+# Development overrides
+[env.development]
+[env.development.vars]
+AUTH_USERNAME = "admin"
+AUTH_PASSWORD = "devpassword"
+
+# Production settings
+[env.production]
+[env.production.vars]
+AUTH_USERNAME = "soc_admin"
