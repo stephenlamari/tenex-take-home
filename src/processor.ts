@@ -7,13 +7,23 @@ export async function processLogFile(
   env: Env,
   file: File,
   jobId: string,
-  r2Key: string
+  r2Key: string,
+  reportProgress?: (
+    stage: 'uploading' | 'parsing' | 'detecting' | 'analyzing' | 'ai_processing' | 'compiling',
+    progress: number,
+    message?: string,
+    itemsProcessed?: number,
+    totalItems?: number,
+    estimatedTimeRemaining?: number,
+  ) => void
 ): Promise<AnalysisResult> {
   try {
     console.log(`Processing job ${jobId}, file: ${file.name}`)
     
+    reportProgress?.('parsing', 10, 'Validating format...')
     const logs = await parseLogFile(file)
     console.log(`Parsed ${logs.length} logs`)
+    reportProgress?.('parsing', 100, `Parsed ${logs.length} rows`)
     
     if (logs.length === 0) {
       return {
@@ -31,14 +41,22 @@ export async function processLogFile(
       }
     }
     
+    reportProgress?.('analyzing', 10, 'Sorting logs chronologically...')
     const sortedLogs = sortLogsByTimestamp(logs)
-    
+
+    reportProgress?.('detecting', 10, 'Running detection rules...')
     const anomalies = detectAllAnomalies(sortedLogs)
     console.log(`Detected ${anomalies.length} anomalies`)
+    reportProgress?.('detecting', 100, `Detected ${anomalies.length} anomalies`)
     
+    const estAiSeconds = Math.min(60, Math.max(8, Math.round(anomalies.length / 20) + 8))
+    reportProgress?.('ai_processing', 10, 'Preparing AI prompt...', undefined, undefined, estAiSeconds)
     const timeline = await generateTimeline(env, anomalies, sortedLogs)
+    reportProgress?.('ai_processing', 60, 'Generating executive summary...', undefined, undefined, Math.max(2, estAiSeconds - 4))
     const executiveSummary = await generateExecutiveSummary(env, anomalies, logs.length)
+    reportProgress?.('ai_processing', 100, 'AI processing complete')
     
+    reportProgress?.('compiling', 50, 'Compiling final results...')
     const result: AnalysisResult = {
       jobId,
       status: 'complete',
@@ -52,6 +70,7 @@ export async function processLogFile(
         lowCount: anomalies.filter(a => a.severity === 'low').length
       }
     }
+    reportProgress?.('compiling', 100, 'Finalizing...')
     
     if (env.DB) {
       await storeResults(env.DB, result)

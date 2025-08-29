@@ -40,6 +40,14 @@ export type JobResponse = {
   jobId: string
   status: 'complete' | 'processing'
   analysis?: Analysis
+  processingStage?: {
+    current: 'uploading' | 'parsing' | 'detecting' | 'analyzing' | 'ai_processing' | 'compiling'
+    progress: number
+    message: string
+    itemsProcessed?: number
+    totalItems?: number
+    estimatedTimeRemaining?: number
+  }
 }
 
 export type RowsResponse = {

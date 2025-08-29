@@ -1,6 +1,6 @@
 import { UploadResponse, JobResponse, RowsResponse } from './types'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
 
 class ApiClient {
   private authHeader: string | null = null
@@ -41,9 +41,12 @@ class ApiClient {
     return response
   }
 
-  async postUpload(file: File): Promise<UploadResponse> {
+  async postUpload(file: File, jobId?: string): Promise<UploadResponse> {
     const formData = new FormData()
     formData.append('file', file)
+    if (jobId) {
+      formData.append('jobId', jobId)
+    }
 
     const response = await this.fetchWithAuth(`${API_BASE_URL}/api/upload`, {
       method: 'POST',

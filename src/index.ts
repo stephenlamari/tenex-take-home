@@ -6,13 +6,26 @@ import { processLogFile, getJobResults } from './processor'
 
 const app = new Hono<{ Bindings: Env }>()
 
-// Simple in-memory store for development
 const jobStore = new Map<string, any>()
 
 app.use('*', cors({
   origin: (origin) => {
     console.log('CORS request from:', origin)
-    return origin || '*'
+    
+    // Allow any subdomain of your Pages project and localhost for development
+    if (!origin) return '*'
+    
+    const allowedPatterns = [
+      /^https:\/\/[a-z0-9]+\.soc-log-analyzer-ui\.pages\.dev$/, 
+      /^https:\/\/soc-log-analyzer-ui\.pages\.dev$/,            
+      /^http:\/\/localhost:\d+$/                             
+    ]
+    
+    if (allowedPatterns.some(pattern => pattern.test(origin))) {
+      return origin
+    }
+    
+    return false
   },
   credentials: true,
   allowHeaders: ['Content-Type', 'Authorization'],
@@ -39,11 +52,20 @@ app.use('/api/*', async (c: Context<{ Bindings: Env }>, next) => {
   return auth(c, next)
 })
 
+app.get('/api/health', async (c) => {
+  return c.json({ 
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    auth: 'verified'
+  })
+})
+
 app.post('/api/upload', async (c) => {
   console.log('POST /api/upload received')
   try {
     const formData = await c.req.formData()
     const file = formData.get('file') as File | null
+    const providedJobId = (formData.get('jobId') as string | null) || undefined
     
     if (!file || !(file instanceof File)) {
       return c.json({ error: 'No file provided' }, 400)
@@ -53,8 +75,19 @@ app.post('/api/upload', async (c) => {
       return c.json({ error: 'File too large. Max 10MB for sync processing' }, 413)
     }
 
-    const jobId = crypto.randomUUID()
-    const r2Key = `logs/${jobId}/${file.name}`
+    const jobId = providedJobId || crypto.randomUUID()
+    const r2Key = `logs/${jobId}/original.json`
+
+    // Initialize job for polling with processing state
+    jobStore.set(jobId, {
+      jobId,
+      status: 'processing',
+      processingStage: {
+        current: 'uploading',
+        progress: 5,
+        message: 'Receiving file...'
+      }
+    })
 
     await c.env.LOG_STORAGE.put(r2Key, file.stream(), {
       httpMetadata: {
@@ -67,14 +100,49 @@ app.post('/api/upload', async (c) => {
       }
     })
 
-    const analysis = await processLogFile(c.env, file, jobId, r2Key)
+    // Mark upload as complete, move to parsing stage
+    jobStore.set(jobId, {
+      jobId,
+      status: 'processing',
+      processingStage: {
+        current: 'parsing',
+        progress: 0,
+        message: 'Reading and parsing log file...'
+      }
+    })
+
+    // Helper to update job progress for polling clients
+    const reportProgress = (
+      stage: 'uploading' | 'parsing' | 'detecting' | 'analyzing' | 'ai_processing' | 'compiling',
+      progress: number,
+      message?: string,
+      itemsProcessed?: number,
+      totalItems?: number,
+      estimatedTimeRemaining?: number,
+    ) => {
+      const current = jobStore.get(jobId) || { jobId, status: 'processing' }
+      jobStore.set(jobId, {
+        ...current,
+        jobId,
+        status: 'processing',
+        processingStage: {
+          current: stage,
+          progress,
+          message: message || current?.processingStage?.message || '',
+          itemsProcessed,
+          totalItems,
+          estimatedTimeRemaining,
+        }
+      })
+    }
+
+    const analysis = await processLogFile(c.env, file, jobId, r2Key, reportProgress)
 
     // Parse logs again to get statistics (since analysis doesn't return raw logs)
     const fileClone = new File([await file.text()], file.name)
     const { parseLogFile } = await import('./parser')
     const logs = await parseLogFile(fileClone)
     
-    // Calculate statistics
     const byAction: Record<string, number> = {}
     const byStatus: Record<string, number> = {}
     
@@ -86,7 +154,6 @@ app.post('/api/upload', async (c) => {
       byStatus[status] = (byStatus[status] || 0) + 1
     })
 
-    // Transform to match frontend expected format
     const response = {
       jobId: analysis.jobId,
       status: 'complete' as const,

@@ -1,7 +1,7 @@
 'use client'
 
 import React, { createContext, useContext, useState, useEffect } from 'react'
-import { apiClient } from '@/lib/api'
+import { apiClient, API_BASE_URL } from '@/lib/api'
 
 interface AuthContextType {
   isAuthenticated: boolean
@@ -50,21 +50,110 @@ function AuthModal({ onSubmit }: { onSubmit: (username: string, password: string
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const handleUsernameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setUsername(e.target.value)
+    if (error) setError('')
+  }
+
+  const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPassword(e.target.value)
+    if (error) setError('')
+  }
+
+  const encodeBasicAuth = (user: string, pass: string): string => {
+    const encoder = new TextEncoder()
+    const data = encoder.encode(`${user}:${pass}`)
+    
+    let binary = ''
+    for (let i = 0; i < data.length; i++) {
+      binary += String.fromCharCode(data[i])
+    }
+    return btoa(binary)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!username || !password) {
+    
+    // Prevent double submission
+    if (isSubmitting) return
+    
+    // Trim and validate inputs
+    const trimmedUsername = username.trim()
+    const trimmedPassword = password
+    
+    if (!trimmedUsername || !trimmedPassword) {
       setError('Please enter both username and password')
       return
     }
+    
+    setIsSubmitting(true)
     setIsLoading(true)
     setError('')
     
-    // Add a small delay for visual feedback
-    await new Promise(resolve => setTimeout(resolve, 300))
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
     
-    onSubmit(username, password)
-    setIsLoading(false)
+    try {
+      const authHeader = `Basic ${encodeBasicAuth(trimmedUsername, trimmedPassword)}`
+      
+      const testResponse = await fetch(`${API_BASE_URL}/api/jobs/test`, {
+        method: 'GET',
+        headers: {
+          'Authorization': authHeader
+        },
+        signal: controller.signal
+      })
+      
+      if (testResponse.status === 401 || testResponse.status === 403) {
+        setError('Invalid username or password')
+        return
+      }
+      
+      if (testResponse.status === 404) {
+        const healthResponse = await fetch(`${API_BASE_URL}/api/health`, {
+          method: 'GET',
+          headers: {
+            'Authorization': authHeader
+          },
+          signal: controller.signal
+        })
+        
+        if (healthResponse.status === 401 || healthResponse.status === 403) {
+          setError('Invalid username or password')
+          return
+        }
+        
+        if (!healthResponse.ok && healthResponse.status !== 404) {
+          setError('Authentication failed. Please try again.')
+          return
+        }
+      } else if (!testResponse.ok) {
+        setError('Authentication failed. Please try again.')
+        return
+      }
+      
+      // Only set auth in client after successful validation
+      apiClient.setAuth(trimmedUsername, trimmedPassword)
+      
+      // Clear sensitive data from component state
+      setPassword('')
+      
+      // Notify parent component
+      onSubmit(trimmedUsername, trimmedPassword)
+      
+    } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        setError('Request timed out. Please try again.')
+      } else {
+        setError('Unable to connect to server. Please check your connection.')
+      }
+    } finally {
+      clearTimeout(timeoutId)
+      setIsLoading(false)
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -99,11 +188,11 @@ function AuthModal({ onSubmit }: { onSubmit: (username: string, password: string
                 id="username"
                 type="text"
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                onChange={handleUsernameChange}
                 className="w-full px-4 py-3 bg-slate-900/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:outline-none transition-all duration-300"
                 placeholder="Enter your username"
                 autoFocus
-                disabled={isLoading}
+                disabled={isLoading || isSubmitting}
               />
               <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
                 <svg className="h-5 w-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -122,10 +211,10 @@ function AuthModal({ onSubmit }: { onSubmit: (username: string, password: string
                 id="password"
                 type="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={handlePasswordChange}
                 className="w-full px-4 py-3 bg-slate-900/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:outline-none transition-all duration-300"
                 placeholder="Enter your password"
-                disabled={isLoading}
+                disabled={isLoading || isSubmitting}
               />
               <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
                 <svg className="h-5 w-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -148,7 +237,7 @@ function AuthModal({ onSubmit }: { onSubmit: (username: string, password: string
           
           <button
             type="submit"
-            disabled={isLoading}
+            disabled={isLoading || isSubmitting}
             className="w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white py-3 px-4 rounded-lg hover:from-blue-500 hover:to-blue-400 transition-all duration-300 font-semibold text-lg shadow-lg hover:shadow-blue-500/25 disabled:from-gray-600 disabled:to-gray-700 disabled:cursor-not-allowed"
           >
             {isLoading ? (
@@ -175,9 +264,19 @@ function AuthModal({ onSubmit }: { onSubmit: (username: string, password: string
           
           <div className="bg-slate-900/50 border border-slate-700 rounded-lg p-3">
             <p className="text-xs text-slate-400 text-center">
-              <span className="text-blue-400">Username:</span> admin
-              <span className="mx-2 text-slate-600">|</span>
-              <span className="text-blue-400">Password:</span> devpassword
+              {process.env.NODE_ENV === 'production' ? (
+                <>
+                  <span className="text-blue-400">Username:</span> soc_admin
+                  <span className="mx-2 text-slate-600">|</span>
+                  <span className="text-blue-400">Password:</span> Contact admin
+                </>
+              ) : (
+                <>
+                  <span className="text-blue-400">Username:</span> admin
+                  <span className="mx-2 text-slate-600">|</span>
+                  <span className="text-blue-400">Password:</span> devpassword
+                </>
+              )}
             </p>
           </div>
         </form>

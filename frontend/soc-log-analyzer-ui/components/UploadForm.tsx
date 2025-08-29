@@ -11,17 +11,47 @@ export function UploadForm() {
   const [file, setFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
+  const [isDragging, setIsDragging] = useState(false)
+  const [jobId, setJobId] = useState<string | null>(null)
+
+  const validateFile = (selectedFile: File) => {
+    if (selectedFile.size > 10 * 1024 * 1024) {
+      setError('File size must be less than 10MB')
+      setFile(null)
+      return false
+    }
+    setFile(selectedFile)
+    setError('')
+    return true
+  }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
     if (selectedFile) {
-      if (selectedFile.size > 10 * 1024 * 1024) {
-        setError('File size must be less than 10MB')
-        setFile(null)
-        return
-      }
-      setFile(selectedFile)
-      setError('')
+      validateFile(selectedFile)
+    }
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+    
+    const droppedFile = e.dataTransfer.files[0]
+    if (droppedFile) {
+      validateFile(droppedFile)
     }
   }
 
@@ -35,10 +65,11 @@ export function UploadForm() {
     setError('')
 
     try {
-      const response = await postUpload(file)
+      const newJobId = crypto.randomUUID()
+      setJobId(newJobId)
+      const response = await postUpload(file, newJobId)
       
-      // Add a minimum delay to show the full progress animation
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      await new Promise(resolve => setTimeout(resolve, 600))
       
       if (response.status === 'processing') {
         router.push(`/results?jobId=${response.jobId}&polling=true`)
@@ -48,12 +79,13 @@ export function UploadForm() {
     } catch (err) {
       setError((err as Error).message || 'Upload failed')
       setUploading(false)
+      setJobId(null)
     }
   }
 
   // Show progress screen while uploading
   if (uploading) {
-    return <AnalysisProgress />
+    return <AnalysisProgress jobId={jobId || undefined} />
   }
 
   return (
@@ -62,7 +94,16 @@ export function UploadForm() {
         <h2 className="text-3xl font-bold mb-6 text-white">Upload Log File</h2>
         
         <div className="space-y-6">
-          <div className="border-2 border-dashed border-slate-600 rounded-xl p-8 text-center bg-slate-900/50 hover:border-blue-500 hover:bg-slate-900/70 transition-all duration-300">
+          <div 
+            className={`border-2 border-dashed rounded-xl p-8 text-center transition-all duration-300 ${
+              isDragging 
+                ? 'border-blue-400 bg-blue-900/30' 
+                : 'border-slate-600 bg-slate-900/50 hover:border-blue-500 hover:bg-slate-900/70'
+            }`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
             <input
               id="file-upload"
               type="file"

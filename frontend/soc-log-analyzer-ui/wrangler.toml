@@ -6,7 +6,8 @@ pages_build_output_dir = "out"
 
 [env.production.vars]
 # Backend URL for production deployment
-NEXT_PUBLIC_API_URL = "https://soc-log-analyzer.stephen-lamari.workers.dev"
+# Use the Workers env-suffixed domain (wrangler deploy --env production)
+NEXT_PUBLIC_API_URL = "https://soc-log-analyzer-production.stephen-lamari.workers.dev"
 
 # Optional preview environment
 [env.preview.vars]

@@ -30,5 +30,12 @@ AUTH_PASSWORD = "devpassword"
 
 # Production settings
 [env.production]
+[[env.production.r2_buckets]]
+binding = "LOG_STORAGE"
+bucket_name = "soc-log-files"
+
+[env.production.ai]
+binding = "AI"
+
 [env.production.vars]
 AUTH_USERNAME = "soc_admin"

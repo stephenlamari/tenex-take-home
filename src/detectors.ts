@@ -55,28 +55,38 @@ export function detectThreatDetections(logs: CloudflareGatewayLog[]): Anomaly[] 
 export function detectSuspiciousCategories(logs: CloudflareGatewayLog[]): Anomaly[] {
   const anomalies: Anomaly[] = []
   
+  const criticalCategories = new Set([
+    'Malware', 'Phishing', 'Spyware', 'Botnets', 'Command and Control',
+    'Ransomware', 'Exploit Kit'
+  ])
+  
   const suspiciousCategories = new Set([
-    'Malware', 'Phishing', 'Spyware', 'Botnets', 'Spam',
-    'Newly Seen Domains', 'Parked Domains', 'Command and Control',
+    'Newly Seen Domains', 'Parked Domains', 'Spam',
     'Cryptomining', 'Anonymizer', 'Proxy', 'VPN', 
     'DNS Tunneling', 'Remote Access', 'P2P', 'Torrent'
   ])
   
   logs.forEach((log, index) => {
+    const critical = (log.categories || []).filter(cat => 
+      criticalCategories.has(cat)
+    )
     const suspicious = (log.categories || []).filter(cat => 
       suspiciousCategories.has(cat)
     )
     
-    if (suspicious.length > 0) {
-      const confidence = Math.min(1, 0.7 + (0.1 * suspicious.length))
-      const severity = confidence > 0.9 ? 'high' : confidence > 0.8 ? 'medium' : 'low'
+    if (critical.length > 0 || suspicious.length > 0) {
+      const allSuspicious = [...critical, ...suspicious]
+      const confidence = critical.length > 0 ? 0.95 : Math.min(1, 0.7 + (0.1 * suspicious.length))
+      const severity = critical.length > 0 ? 'critical' : 
+                      confidence > 0.9 ? 'high' : 
+                      confidence > 0.8 ? 'medium' : 'low'
       
       anomalies.push({
         row_index: index,
         rule: 'suspicious_category',
         confidence,
         severity,
-        explanation: `Access to suspicious category: ${suspicious.join(', ')} by ${log.email}`,
+        explanation: `Access to suspicious category: ${allSuspicious.join(', ')} by ${log.email}`,
         raw_log: log
       })
     }

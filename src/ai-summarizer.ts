@@ -16,9 +16,9 @@ export async function generateTimeline(
   const prompt = buildTimelinePrompt(timeGroups, criticalEvents, highEvents)
   
   try {
-    const response = await env.AI.run('@cf/meta/llama-2-7b-chat-int8', {
+    const response = await env.AI.run('@cf/google/gemma-7b-it-lora', {
       prompt,
-      max_tokens: 500,
+      max_tokens: 1000,
       temperature: 0.3
     })
     
@@ -147,9 +147,9 @@ Format as 3-4 concise bullet points focusing on:
 Keep it under 100 words total.`
 
   try {
-    const response = await env.AI.run('@cf/meta/llama-2-7b-chat-int8', {
+    const response = await env.AI.run('@cf/google/gemma-7b-it-lora', {
       prompt,
-      max_tokens: 150,
+      max_tokens: 500,
       temperature: 0.3
     })
     

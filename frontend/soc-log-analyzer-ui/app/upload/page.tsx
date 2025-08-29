@@ -16,6 +16,26 @@ export default function UploadPage() {
           </p>
         </div>
         <UploadForm />
+        
+        <div className="mt-12 p-6 bg-slate-800/50 backdrop-blur rounded-xl border border-slate-700 animate-fadeIn">
+          <h2 className="text-lg font-semibold text-white mb-3">Sample Data</h2>
+          <p className="text-sm text-slate-300 mb-4">
+            Need test data? Download our sample Cloudflare Gateway logs that contain various security anomalies for testing.
+          </p>
+          <a 
+            href="/sample-gateway-logs.json"
+            download="gateway-anomalous.json"
+            className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-all duration-200 transform hover:scale-105 hover:shadow-lg"
+          >
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
+            </svg>
+            Download Sample Logs
+          </a>
+          <div className="mt-3 text-xs text-slate-400">
+            Contains: DLP violations, threat detections, suspicious categories, and various security events
+          </div>
+        </div>
       </div>
     </div>
   )
