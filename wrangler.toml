@@ -9,12 +9,6 @@ bucket_name = "soc-log-files"
 [ai]
 binding = "AI"
 
-# Optional D1 database for storing results
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "soc-analyzer-db"
-# database_id = "your-database-id"
-
 # Development overrides
 [env.development]
 [[env.development.r2_buckets]]
