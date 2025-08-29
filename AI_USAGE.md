@@ -109,6 +109,6 @@ The following are **NOT** using AI and rely on deterministic algorithms:
 ## Cost and Performance
 
 - Uses Cloudflare's edge AI for low latency
-- Token limits: 500 for timeline, 150 for summary
+- Token limits: 1000 for timeline, 500 for summary
 - Temperature: 0.3 (favors consistency over creativity)
 - Processes on-demand only when logs are analyzed
